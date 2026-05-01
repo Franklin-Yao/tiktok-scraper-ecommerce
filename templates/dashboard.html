@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>TikTok Trending Products</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    * { box-sizing: border-box; }
+    body { background:#0f0f0f; color:#f1f1f1; font-family:'Inter',sans-serif; margin:0; }
+
+    /* ── Card ── */
+    .card {
+      background:#1a1a1a; border:1px solid #2a2a2a;
+      border-radius:16px; overflow:hidden;
+      display:flex; flex-direction:column;
+      transition:border-color .2s;
+    }
+    .card:hover               { border-color:#fe2c55; }
+    .card.labelled-yes        { border-color:#166534 !important; }
+    .card.labelled-no         { border-color:#7f1d1d !important; }
+
+    /* ── Video area (9:16) ── */
+    .video-area {
+      position:relative; width:100%; padding-top:177.78%; /* 9:16 */
+      background:#000; flex-shrink:0; cursor:pointer;
+    }
+    .video-area img {
+      position:absolute; inset:0; width:100%; height:100%;
+      object-fit:cover;
+    }
+    .video-area iframe {
+      position:absolute; inset:0; width:100%; height:100%;
+      border:none;
+    }
+    .play-overlay {
+      position:absolute; inset:0;
+      display:flex; align-items:center; justify-content:center;
+      background:rgba(0,0,0,.25); transition:background .2s;
+    }
+    .play-overlay:hover { background:rgba(0,0,0,.4); }
+    .play-circle {
+      width:56px; height:56px; border-radius:50%;
+      background:rgba(254,44,85,.9);
+      display:flex; align-items:center; justify-content:center;
+      box-shadow:0 4px 20px rgba(254,44,85,.5);
+    }
+
+    /* Rank badge on video */
+    .rank-badge {
+      position:absolute; top:8px; left:8px; z-index:2;
+      background:rgba(0,0,0,.65); border-radius:6px;
+      padding:2px 7px; font-size:11px; font-weight:700; color:#fff;
+    }
+    /* Priority badge on video */
+    .pri-badge {
+      position:absolute; top:8px; right:8px; z-index:2;
+      border-radius:6px; padding:2px 7px; font-size:11px; font-weight:700;
+    }
+    .pri-high   { background:rgba(69,10,10,.85); color:#fca5a5; }
+    .pri-medium { background:rgba(69,26,3,.85);  color:#fdba74; }
+    .pri-low    { background:rgba(31,31,31,.85); color:#9ca3af; }
+
+    /* Score bars at bottom of video */
+    .score-bars {
+      position:absolute; bottom:0; left:0; right:0; z-index:2;
+      padding:6px 8px 4px;
+      background:linear-gradient(transparent, rgba(0,0,0,.75));
+    }
+    .bar { background:rgba(255,255,255,.15); border-radius:3px; height:4px; overflow:hidden; margin-bottom:3px; }
+    .bar-fill  { height:100%; border-radius:3px; background:linear-gradient(90deg,#fe2c55,#ff6b81); }
+    .bar-model { height:100%; border-radius:3px; background:linear-gradient(90deg,#6366f1,#a78bfa); }
+    .bar-label { display:flex; justify-content:space-between; font-size:9px; color:rgba(255,255,255,.6); margin-bottom:1px; }
+
+    /* ── Info footer ── */
+    .info { padding:8px 10px 6px; display:flex; flex-direction:column; gap:5px; }
+
+    .metrics { display:flex; gap:6px; font-size:11px; }
+    .metric   { flex:1; text-align:center; background:#111; border-radius:8px; padding:4px 2px; }
+    .metric-label { color:#6b7280; font-size:9px; display:block; }
+    .metric-val   { font-weight:700; }
+
+    .product-row { font-size:11px; font-weight:600; color:#e5e7eb;
+                   white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+
+    .link-row { display:flex; gap:4px; }
+    .link-btn {
+      flex:1; text-align:center; padding:4px 2px; border-radius:7px;
+      font-size:10px; font-weight:600; cursor:pointer; text-decoration:none;
+      white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+    }
+    .link-direct { background:#052e16; color:#86efac; border:1px solid #166534; }
+    .link-amazon { background:#1a1200; color:#fbbf24; border:1px solid #92400e; }
+    .link-tiktok { background:#1a0a0a; color:#fe2c55;  border:1px solid #7f1d1d; }
+    .link-creator{ background:#111;    color:#9ca3af;  border:1px solid #374151; }
+
+    .label-row { display:flex; gap:4px; }
+    .label-btn {
+      flex:1; padding:5px 4px; border-radius:8px; font-size:11px;
+      font-weight:700; cursor:pointer; border:1px solid #374151;
+      background:#111; transition:all .15s;
+    }
+    .label-btn:hover          { transform:scale(1.04); }
+    .label-btn.active-yes     { background:#052e16; border-color:#166534; }
+    .label-btn.active-no      { background:#450a0a; border-color:#991b1b; }
+
+    .sku-row { display:flex; justify-content:space-between; font-size:10px; color:#6b7280; }
+
+    /* ── Toast ── */
+    #toast {
+      display:none; position:fixed; top:14px; right:14px; z-index:200;
+      padding:8px 14px; border-radius:10px; font-size:12px; font-weight:600;
+      background:#1a1a1a; box-shadow:0 4px 20px rgba(0,0,0,.5);
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Header -->
+  <header style="background:#0f0f0f; border-bottom:1px solid #1f1f1f;"
+          class="px-5 py-3 flex items-center justify-between sticky top-0 z-50">
+    <div class="flex items-center gap-2">
+      <svg class="w-6 h-6" viewBox="0 0 24 24" fill="#fe2c55">
+        <path d="M19.59 6.69a4.83 4.83 0 01-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 01-2.88 2.5 2.89 2.89 0 01-2.89-2.89 2.89 2.89 0 012.89-2.89c.28 0 .54.04.79.1V9.01a6.28 6.28 0 00-.79-.05 6.34 6.34 0 00-6.34 6.34 6.34 6.34 0 006.34 6.34 6.34 6.34 0 006.33-6.34V8.69a8.18 8.18 0 004.78 1.52V6.76a4.85 4.85 0 01-1.01-.07z"/>
+      </svg>
+      <span class="font-bold text-base tracking-tight">Trending Products</span>
+      <span class="text-xs text-gray-600 hidden sm:inline">· {{ summary.total }} scraped · {{ packs|length }} packs · {{ timestamp }}</span>
+    </div>
+    <div class="flex items-center gap-2">
+      <span class="text-xs px-2 py-1 rounded-full hidden sm:inline"
+            style="background:#1a1a2e;border:1px solid #312e81;color:#a5b4fc">
+        {% if model %}🧠 {{ "%.0f"|format(model.accuracy*100) }}% · {{ model.trained_on }}L
+        {% else %}🧠 {{ label_info.positive }}/1000👍 {{ label_info.negative }}/1000👎{% endif %}
+      </span>
+      {% if label_info.positive >= 1000 and label_info.negative >= 1000 %}
+      <button onclick="trainModel()" class="text-xs px-2.5 py-1 rounded-full font-semibold"
+              style="background:#312e81;color:#a5b4fc;border:1px solid #4338ca">⚡ Train</button>
+      {% endif %}
+      <span class="text-xs text-gray-600">{{ label_info.positive }}👍 {{ label_info.negative }}👎</span>
+      <button id="refresh-btn" onclick="triggerRun()"
+              class="text-xs px-3 py-1.5 rounded-full font-bold"
+              style="background:#fe2c55;color:#fff">▶ Run</button>
+    </div>
+  </header>
+
+  <!-- Toast -->
+  <div id="toast"></div>
+
+  <!-- Grid -->
+  <main class="p-4">
+    <div class="grid gap-3" style="grid-template-columns:repeat(auto-fill,minmax(220px,1fr))">
+
+      {% for p in packs %}
+      {% set priority_lower = p.priority | lower %}
+      {% set is_high   = 'high'   in priority_lower %}
+      {% set is_medium = 'medium' in priority_lower %}
+      {% set already_labelled = p.video_id in labelled %}
+
+      <div id="card-{{ p.video_id }}"
+           class="card {{ 'labelled-yes' if already_labelled else '' }}">
+
+        <!-- ── Video area ── -->
+        <div class="video-area" id="va-{{ p.video_id }}"
+             onclick="playVideo('{{ p.video_id }}', '{{ p.video_url }}')">
+
+          <!-- Thumbnail -->
+          {% if p.cover_url %}
+          <img id="thumb-{{ p.video_id }}" src="{{ p.cover_url }}"
+               loading="lazy" alt="cover" />
+          {% else %}
+          <div style="position:absolute;inset:0;background:#111;display:flex;align-items:center;justify-content:center;color:#444;font-size:11px;">No preview</div>
+          {% endif %}
+
+          <!-- Play button overlay -->
+          <div class="play-overlay" id="po-{{ p.video_id }}">
+            <div class="play-circle">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="white">
+                <path d="M8 5v14l11-7z"/>
+              </svg>
+            </div>
+          </div>
+
+          <!-- Rank -->
+          <div class="rank-badge">#{{ loop.index }}</div>
+
+          <!-- Priority -->
+          <div class="pri-badge {{ 'pri-high' if is_high else ('pri-medium' if is_medium else 'pri-low') }}">
+            {% if is_high %}🔥{% elif is_medium %}⚡{% else %}·{% endif %}
+            {{ "%.2f"|format(p.viral_score) }}
+          </div>
+
+          <!-- Score bars overlay -->
+          <div class="score-bars">
+            <div class="bar-label">
+              <span>Viral</span><span>{{ "%.0f"|format(p.viral_score*100) }}%</span>
+            </div>
+            <div class="bar"><div class="bar-fill" style="width:{{ (p.viral_score*100)|round|int }}%"></div></div>
+            {% if p.model_score is defined %}
+            <div class="bar-label" style="color:rgba(165,180,252,.7);margin-top:3px">
+              <span>🧠 Model</span><span>{{ "%.0f"|format(p.model_score*100) }}%</span>
+            </div>
+            <div class="bar"><div class="bar-model" style="width:{{ (p.model_score*100)|round|int }}%"></div></div>
+            {% endif %}
+          </div>
+        </div>
+
+        <!-- ── Compact info footer ── -->
+        <div class="info">
+
+          <!-- Row 1: stats -->
+          <div style="display:flex;align-items:center;gap:6px;font-size:11px;flex-wrap:wrap">
+            <span style="font-weight:700">
+              {% if p.views >= 1000000 %}{{ "%.1f"|format(p.views/1000000) }}M
+              {% elif p.views >= 1000 %}{{ (p.views//1000) }}K
+              {% else %}{{ p.views }}{% endif %}
+            </span>
+            <span style="color:#6b7280">·</span>
+            <span style="color:#fe2c55;font-weight:700">
+              +{% if p.views_per_hour >= 1000000 %}{{ "%.1f"|format(p.views_per_hour/1000000) }}M
+              {% elif p.views_per_hour >= 1000 %}{{ (p.views_per_hour//1000) }}K
+              {% else %}{{ p.views_per_hour }}{% endif %}/h
+            </span>
+            <span style="color:#6b7280">·</span>
+            <span style="color:#6b7280">
+              {% if p.hours_old < 24 %}{{ p.hours_old|int }}h
+              {% else %}{{ (p.hours_old/24)|int }}d{% endif %}
+            </span>
+            {% if p.sku_validated %}
+            <span style="color:#86efac;margin-left:auto">✅{{ p.creator_count }}</span>
+            {% endif %}
+          </div>
+
+          <!-- Row 2: product + creator + shop link -->
+          <div style="display:flex;align-items:center;gap:5px;font-size:11px;min-width:0">
+            <span style="font-weight:600;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
+                  title="{{ p.product_name }}">{{ p.product_name or '—' }}</span>
+            <span style="color:#6b7280;flex-shrink:0">@{{ p.creator_handle[:10] }}</span>
+            {% if p.shop_links.bio_link %}
+            <a href="{{ p.shop_links.bio_link }}" target="_blank"
+               style="flex-shrink:0;font-size:10px;padding:2px 6px;border-radius:5px;background:#052e16;color:#86efac;border:1px solid #166534;text-decoration:none"
+               onclick="event.stopPropagation()">🔗</a>
+            {% endif %}
+          </div>
+
+          <!-- Row 3: label buttons -->
+          <div class="label-row" onclick="event.stopPropagation()">
+            <button id="btn-yes-{{ p.video_id }}" onclick="label('{{ p.video_id }}', 1)"
+                    class="label-btn {{ 'active-yes' if already_labelled else '' }}">👍 带货</button>
+            <button id="btn-no-{{ p.video_id }}"  onclick="label('{{ p.video_id }}', 0)"
+                    class="label-btn">👎 非带货</button>
+          </div>
+
+        </div>
+      </div>
+      {% else %}
+      <div style="grid-column:1/-1;text-align:center;padding:80px 0;color:#4b5563">
+        <div style="font-size:48px;margin-bottom:12px">📭</div>
+        <div style="font-weight:600">No data yet</div>
+        <div style="font-size:13px;margin-top:4px">Click <strong>▶ Run</strong> to scrape TikTok</div>
+      </div>
+      {% endfor %}
+
+    </div>
+  </main>
+
+  <script>
+    /* ── Video inline embed ── */
+    const playing = new Set();
+
+    function playVideo(videoId, videoUrl) {
+      const va = document.getElementById(`va-${videoId}`);
+      const po = document.getElementById(`po-${videoId}`);
+      const th = document.getElementById(`thumb-${videoId}`);
+
+      if (playing.has(videoId)) {
+        // Second click → open on TikTok
+        window.open(videoUrl, '_blank');
+        return;
+      }
+
+      playing.add(videoId);
+
+      // Replace thumbnail with TikTok embed iframe
+      if (th) th.remove();
+      if (po) po.remove();
+
+      const iframe = document.createElement('iframe');
+      iframe.src = `https://www.tiktok.com/embed/v2/${videoId}`;
+      iframe.setAttribute('allowfullscreen', '');
+      iframe.setAttribute('allow', 'autoplay; encrypted-media');
+      iframe.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;border:none;';
+      va.appendChild(iframe);
+    }
+
+    /* ── Labels ── */
+    async function label(videoId, value) {
+      try {
+        const res  = await fetch('/api/label', {
+          method:'POST', headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({video_id: videoId, label: value}),
+        });
+        const data = await res.json();
+        if (data.status !== 'ok') throw new Error(data.message);
+
+        const card   = document.getElementById(`card-${videoId}`);
+        const btnYes = document.getElementById(`btn-yes-${videoId}`);
+        const btnNo  = document.getElementById(`btn-no-${videoId}`);
+        btnYes.classList.toggle('active-yes', value === 1);
+        btnYes.classList.toggle('active-no',  false);
+        btnNo.classList.toggle('active-no',   value === 0);
+        btnNo.classList.toggle('active-yes',  false);
+        card.classList.toggle('labelled-yes', value === 1);
+        card.classList.toggle('labelled-no',  value === 0);
+
+        showToast(`${value===1?'👍':'👎'} Labelled · ${data.total_labels} total`,
+                  value===1 ? '#86efac' : '#fca5a5');
+
+        // hint is shown server-side via the pill; no JS threshold needed
+      } catch(e) {
+        showToast('❌ ' + e.message, '#fca5a5');
+      }
+    }
+
+    /* ── Train ── */
+    async function trainModel() {
+      showToast('⏳ Training…', '#a5b4fc');
+      try {
+        const res  = await fetch('/api/train', {method:'POST'});
+        const data = await res.json();
+        if (data.status === 'trained') {
+          showToast(`✅ ${(data.accuracy*100).toFixed(0)}% acc · ${data.trained_on} labels`, '#86efac');
+          setTimeout(() => location.reload(), 1200);
+        } else {
+          showToast(`⚠️ ${data.reason}`, '#fbbf24');
+        }
+      } catch(e) { showToast('❌ Training failed', '#fca5a5'); }
+    }
+
+    /* ── Scrape run ── */
+    async function triggerRun() {
+      const btn = document.getElementById('refresh-btn');
+      btn.textContent = '⏳';
+      btn.disabled = true;
+      showToast('Scraping… ~30s');
+      try {
+        const res  = await fetch('/api/run', {method:'POST'});
+        const data = await res.json();
+        if (data.status === 'ok') {
+          showToast(`✅ ${data.count} packs`, '#86efac');
+          setTimeout(() => location.reload(), 700);
+        } else {
+          showToast('❌ ' + (data.message||'Error'), '#fca5a5');
+        }
+      } catch(e) { showToast('❌ Failed', '#fca5a5'); }
+      finally { btn.textContent = '▶ Run'; btn.disabled = false; }
+    }
+
+    /* ── Toast ── */
+    let _toastTimer;
+    function showToast(msg, color='#fe2c55') {
+      const t = document.getElementById('toast');
+      t.textContent = msg;
+      t.style.borderColor = color;
+      t.style.color = color;
+      t.style.display = 'block';
+      clearTimeout(_toastTimer);
+      _toastTimer = setTimeout(() => t.style.display='none', 3000);
+    }
+  </script>
+
+</body>
+</html>
